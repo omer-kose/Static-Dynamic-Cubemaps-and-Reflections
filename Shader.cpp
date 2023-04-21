@@ -1,5 +1,8 @@
 #include "Shader.h"
 
+Shader::Shader() {}
+
+
 //Going to read shaders from the files
 Shader::Shader(const char * vertexPath, const char * fragmentPath, const char* geometryPath)
 {
