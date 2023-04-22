@@ -69,10 +69,11 @@ Shader carTiresShader;
 Shader carWindowsShader;
 glm::vec3 carPosition = glm::vec3(0.0f);
 glm::vec3 carFront = glm::vec3(0.0f, 0.0f, -1.0f);
-glm::vec3 carVelocity = glm::vec3(0.0f);
+float carSpeed = 0.0f;
+float gasAcceleration = 5.0f;
+float drag = 3.0f;
 float carRotationOffset = 90.0f; //The loaded model has a rotation offset
 float carRotationAngle = 90.0f;
-float accelerationFactor = 5.0f;
 float carRotationFactor = 15.0f;
 
 //Texture Loaders
@@ -183,25 +184,27 @@ void processInput(GLFWwindow* window)
 		glfwSetWindowShouldClose(window, true);
 	}
 
-
+    
+    float acceleration = 0.0f;
+    float nitro; //YEAH
 	//If shift is pressed move the camera faster
 	if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
     {
-        accelerationFactor = 10.0f;
+        nitro = 2.0f;
     }
     else
     {
-        accelerationFactor = 5.0f;
+        nitro = 1.0f;
     }
         
 	//Camera movement
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
     {
-        carVelocity += (float)deltaTime * accelerationFactor * carFront;
+        acceleration += (float)deltaTime * nitro * gasAcceleration;
     }
 	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
     {
-        carVelocity -= (float)deltaTime * accelerationFactor * carFront;
+        acceleration -= (float)deltaTime * nitro * gasAcceleration;
     }
 	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
     {
@@ -215,8 +218,20 @@ void processInput(GLFWwindow* window)
     //Update car vectors
     float carRotationRadian = glm::radians(carRotationAngle);
     carFront = glm::vec3((float)cos(carRotationRadian), 0.0f, (float)(-sin(carRotationRadian)));
-    carPosition += (float)deltaTime * carVelocity;
-    
+    //Apply Drag if car is moving
+    if(fabs(carSpeed) > deltaTime)
+    {
+        if(carSpeed > 0)
+        {
+            acceleration -= (float)deltaTime * drag;
+        }
+        else
+        {
+            acceleration += (float)deltaTime * drag;
+        }
+    }
+    carSpeed += acceleration;
+    carPosition += (float)deltaTime * (carSpeed * carFront);
 }
 
 
