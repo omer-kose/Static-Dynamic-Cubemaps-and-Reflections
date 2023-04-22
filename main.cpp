@@ -176,7 +176,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 
 //Function that will process the inputs, such as keyboard inputs
 //In this program this function handles the car movement.
-void processInput(GLFWwindow* window)
+void processCarMovement(GLFWwindow* window)
 {
 	//If pressed glfwGetKey return GLFW_PRESS, if not it returns GLFW_RELEASE
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -197,7 +197,7 @@ void processInput(GLFWwindow* window)
         nitro = 1.0f;
     }
         
-	//Camera movement
+	//Car movement
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
     {
         acceleration += (float)deltaTime * nitro * gasAcceleration;
@@ -348,13 +348,39 @@ void renderCar(const Mesh& mesh, Shader& shader)
 
 
 //Set the camera with respect to car
-void setCamera()
+void updateCamera(GLFWwindow* window)
 {
-    //Camera will always look at the car from behind
-    cameraPosition = carPosition - 15.0f * carFront + glm::vec3(0.0f, 4.0f, 0.0f);
-    view = glm::lookAt(cameraPosition, carPosition + carFront, glm::vec3(0.0f, 1.0f, 0.0f));
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) //From Left
+    {
+        glm::vec3 offset = glm::vec3(carFront.z, 0.0f, -carFront.x);
+        cameraPosition = carPosition - 10.0f * offset + glm::vec3(0.0f, 3.0f, 0.0f);
+        view = glm::lookAt(cameraPosition, carPosition, glm::vec3(0.0f, 1.0f, 0.0f));
+        return;
+    }
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) //From Right
+    {
+        glm::vec3 offset = glm::vec3(-carFront.z, 0.0f, carFront.x);
+        cameraPosition = carPosition - 10.0f * offset + glm::vec3(0.0f, 3.0f, 0.0f);
+        view = glm::lookAt(cameraPosition, carPosition, glm::vec3(0.0f, 1.0f, 0.0f));
+        return;
+    }
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) //From Back
+    {
+        cameraPosition = carPosition - 10.0f * carFront + glm::vec3(0.0f, 3.0f, 0.0f);
+        view = glm::lookAt(cameraPosition, carPosition, glm::vec3(0.0f, 1.0f, 0.0f));
+        return;
+    }
+    if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS) //From Front
+    {
+        cameraPosition = carPosition + 10.0f * carFront + glm::vec3(0.0f, 3.0f, 0.0f);
+        view = glm::lookAt(cameraPosition, carPosition, glm::vec3(0.0f, 1.0f, 0.0f));
+        return;
+    }
+    
+    //If no input
+    cameraPosition = carPosition - 10.0f * carFront + glm::vec3(0.0f, 3.0f, 0.0f);
+    view = glm::lookAt(cameraPosition, carPosition, glm::vec3(0.0f, 1.0f, 0.0f));
 }
-
 
 
 void loadScene()
@@ -394,6 +420,8 @@ void loadScene()
                           "Shaders/carShader/cartires_shader_fragment.glsl");
     carWindowsShader = Shader("Shaders/carShader/carwindows_shader_vertex.glsl",
                           "Shaders/carShader/carwindows_shader_fragment.glsl");
+    
+    
 }
 
 
@@ -423,9 +451,9 @@ int main()
 		//Update deltaTime
 		updateDeltaTime();
 		// input
-		processInput(window);
+		processCarMovement(window);
         //Set the camera
-        setCamera();
+        updateCamera(window);
 
 		// render
 		// ------
