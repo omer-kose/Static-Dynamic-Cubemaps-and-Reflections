@@ -30,11 +30,18 @@
 //Camera Properties
 glm::vec3 cameraPosition; //Always fixed to car
 glm::mat4 view;
-Camera camera(glm::vec3(0.0f, 0.0f, 2.0f));
+float fov = 45.0f;
+float near = 0.1f;
+float far = 1000.0f;
+//Camera camera(glm::vec3(0.0f, 0.0f, 2.0f));
+
+//Screen Properties
+float aspectRatio = (float)SCR_WIDTH / SCR_HEIGHT;
+
 
 
 //Light Properties (For now, we only have directional light)
-glm::vec3 lightDir = glm::vec3(0.0, -100.0, 0.0);
+glm::vec3 lightPos = glm::vec3(0.0, 100.0, 0.0);
 glm::vec3 lightColor = glm::vec3(1.0, 1.0, 1.0);
 
 //Time parameters
@@ -74,7 +81,50 @@ float gasAcceleration = 5.0f;
 float drag = 3.0f;
 float carRotationOffset = 90.0f; //The loaded model has a rotation offset
 float carRotationAngle = 90.0f;
-float carRotationFactor = 15.0f;
+float carRotationFactor = 30.0f; //was 15.0f
+
+
+//Dynamic Cubemap Properties
+GLuint dynamicCubemapTextureID;
+int dynamicCubemapSize = 1024;
+GLuint dynamicCubemapFBO;
+GLuint dynamicCubemapDepthbuffer;
+glm::vec3 cameraGazes[6] =
+{
+    glm::vec3(1.0f, 0.0f, 0.0f), //Right
+    glm::vec3(1.0f, 0.0f, 0.0f), //Left
+    glm::vec3(0.0f, 1.0f, 0.0f),  //Top
+    glm::vec3(0.0f, 1.0f, 0.0f), //Bottom
+    glm::vec3(0.0f, 0.0f, 1.0f), //Back
+    glm::vec3(0.0f, 0.0f, -1.0f), //Front
+};
+glm::vec3 cameraUps[6] =
+{
+    glm::vec3(0.0f, -1.0f, 0.0f), //Right
+    glm::vec3(0.0f, -1.0f, 0.0f), //Left
+    glm::vec3(0.0f, 0.0f, 1.0f),  //Top
+    glm::vec3(0.0f, 0.0f, -1.0f), //Bottom
+    glm::vec3(0.0f, -1.0f, 0.0f), //Back
+    glm::vec3(0.0f, -1.0f, 0.0f), //Front
+};
+
+
+//Other meshes
+//Armadillo
+Mesh armadilloMesh;
+Shader armadilloShader;
+float armadilloScale = 10.0f;
+glm::vec3 armadilloPosition = glm::vec3(20.0f, 10.0f - 1.08f, 20.0f);
+glm::vec3 armadilloColor = glm::vec3(0.97f, 0.97f, 0.1f);
+//Teapot
+Mesh teapotMesh;
+Shader teapotShader;
+glm::vec3 teapotColor = glm::vec3(0.1f, 0.97f, 0.97f);
+float teapotScale = 4.0f;
+glm::vec3 teapotPosition = glm::vec3(-20.0f, 4.0f -1.08f, -20.0f);
+
+
+
 
 //Texture Loaders
 GLuint textureFromFile(const char* filePath, bool verticalFlip)
@@ -275,20 +325,8 @@ int setupDependencies()
 
 	//Configure Global OpenGL State
 	glEnable(GL_DEPTH_TEST);
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 	return 0;
-}
-
-
-void renderMesh(const Mesh& mesh, Shader& shader)
-{
-    shader.use();
-    glm::mat4 view = camera.getViewMatrix();
-    glm::mat4 projection = glm::perspective(glm::radians(camera.getFov()), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 100.0f);
-    glm::mat4 model = glm::mat4(1.0f);
-    glm::mat4 PV = projection * view;
-    shader.setMat4("PVM", PV * model);
-    glBindVertexArray(mesh.getVAO());
-    glDrawElements(GL_TRIANGLES, 3 * mesh.getNumTriangles(), GL_UNSIGNED_INT, 0);
 }
 
 
@@ -296,7 +334,7 @@ void renderGround(const Mesh& mesh, Shader& shader)
 {
     shader.use();
     //glm::mat4 view = camera.getViewMatrix();
-    glm::mat4 projection = glm::perspective(glm::radians(camera.getFov()), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, near, far);
     //Lay the surface, scale it up and move it down a bit (it will be moved down so that the car tires will be on the ground)
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, groundOffset);
@@ -320,7 +358,7 @@ void renderSkybox(const Mesh& mesh, Shader& shader)
     glDepthFunc(GL_LEQUAL);
     shader.use();
     //glm::mat4 view = glm::mat4(glm::mat3(camera.getViewMatrix()));
-    glm::mat4 projection = glm::perspective(glm::radians(camera.getFov()), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, near, far);
     glm::mat4 PV = projection * glm::mat4(glm::mat3(view));
     //Set uniforms
     shader.setMat4("PV", PV);
@@ -332,16 +370,68 @@ void renderSkybox(const Mesh& mesh, Shader& shader)
     glDepthFunc(GL_LESS);
 }
 
-void renderCar(const Mesh& mesh, Shader& shader)
+void renderTest(const Mesh& mesh, Shader& shader)
+{
+    glDepthFunc(GL_LEQUAL);
+    shader.use();
+    //glm::mat4 view = glm::mat4(glm::mat3(camera.getViewMatrix()));
+    glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, near, far);
+    glm::mat4 PV = projection * glm::mat4(glm::mat3(view));
+    //Set uniforms
+    shader.setMat4("PV", PV);
+    //Set skybox texture
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, dynamicCubemapTextureID);
+    glBindVertexArray(mesh.getVAO());
+    glDrawElements(GL_TRIANGLES, 3 * mesh.getNumTriangles(), GL_UNSIGNED_INT, 0);
+    glDepthFunc(GL_LESS);
+}
+
+
+void renderCar(const Mesh& mesh, Shader& shader, bool isReflective)
 {
     shader.use();
     //glm::mat4 view = camera.getViewMatrix();
-    glm::mat4 projection = glm::perspective(glm::radians(camera.getFov()), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, near, far);
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, carPosition);
     model = glm::rotate(model, glm::radians(carRotationAngle + carRotationOffset), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 PV = projection * view;
     shader.setMat4("PVM", PV * model);
+    shader.setMat4("model", model);
+    shader.setMat3("normal_transformation", glm::transpose(glm::inverse(glm::mat3(model))));
+    //Light uniforms
+    shader.setVec3("light_pos", lightPos);
+    shader.setVec3("light_color", lightColor);
+    shader.setVec3("view_pos", cameraPosition);
+    //for body and mirrors the dynamic environment map will be bound
+    if(isReflective)
+    {
+        //Bind the ground texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, dynamicCubemapTextureID);
+    }
+    glBindVertexArray(mesh.getVAO());
+    glDrawElements(GL_TRIANGLES, 3 * mesh.getNumTriangles(), GL_UNSIGNED_INT, 0);
+}
+
+void renderMesh(const Mesh& mesh, Shader& shader, glm::vec3 meshPos, float scale, glm::vec3 meshColor)
+{
+    shader.use();
+    //glm::mat4 view = camera.getViewMatrix();
+    glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, near, far);
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, meshPos);
+    model = glm::scale(model, glm::vec3(scale));
+    glm::mat4 PV = projection * view;
+    shader.setMat4("PVM", PV * model);
+    shader.setMat4("model", model);
+    shader.setMat3("normal_transformation", glm::transpose(glm::inverse(glm::mat3(model))));
+    //Light uniforms
+    shader.setVec3("light_pos", lightPos);
+    shader.setVec3("light_color", lightColor);
+    shader.setVec3("view_pos", cameraPosition);
+    shader.setVec3("objectColor", meshColor);
     glBindVertexArray(mesh.getVAO());
     glDrawElements(GL_TRIANGLES, 3 * mesh.getNumTriangles(), GL_UNSIGNED_INT, 0);
 }
@@ -383,6 +473,43 @@ void updateCamera(GLFWwindow* window)
 }
 
 
+
+void prepareDynamicCubemap()
+{
+    //Create the cubemap
+    glGenTextures(1, &dynamicCubemapTextureID);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, dynamicCubemapTextureID);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    //Allocate texture data
+    for(int i = 0; i < 6; ++i)
+    {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, dynamicCubemapSize, dynamicCubemapSize, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+    }
+    
+    //Create the framebuffer
+    glGenFramebuffers(1, &dynamicCubemapFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, dynamicCubemapFBO);
+    //Create the uniform depth buffer (depth buffer is uniform as while rendering to each face it will be cleared)
+    glGenRenderbuffers(1, &dynamicCubemapDepthbuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, dynamicCubemapDepthbuffer);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, dynamicCubemapSize, dynamicCubemapSize);
+    //Attach it to the framebuffer
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, dynamicCubemapDepthbuffer);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    //For completenes also attach a temporary color attachment
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X, dynamicCubemapTextureID, 0);
+    
+    //Check integrity
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 void loadScene()
 {
     //Ground Mesh
@@ -412,6 +539,7 @@ void loadScene()
     
     //The Cybertruck
     carBodyMesh = Mesh("hw2_support_files/obj/cybertruck/cybertruck_body.obj");
+    //carBodyMesh = Mesh("hw2_support_files/obj/teapot.obj");
     carTiresMesh = Mesh("hw2_support_files/obj/cybertruck/cybertruck_tires.obj");
     carWindowsMesh = Mesh("hw2_support_files/obj/cybertruck/cybertruck_windows.obj");
     carBodyShader = Shader("Shaders/carShader/carbody_shader_vertex.glsl",
@@ -420,7 +548,20 @@ void loadScene()
                           "Shaders/carShader/cartires_shader_fragment.glsl");
     carWindowsShader = Shader("Shaders/carShader/carwindows_shader_vertex.glsl",
                           "Shaders/carShader/carwindows_shader_fragment.glsl");
+
+    //Prepare the dynamic cubemap
+    prepareDynamicCubemap();
     
+    
+    //Load other meshes
+    armadilloMesh = Mesh("hw2_support_files/obj/armadillo.obj");
+    armadilloShader = Shader("Shaders/diffuseShader/diffuse_shader_vertex.glsl",
+                          "Shaders/diffuseShader/diffuse_shader_fragment.glsl");
+
+    
+    teapotMesh = Mesh("hw2_support_files/obj/teapot.obj");
+    teapotShader = Shader("Shaders/specularShader/specular_shader_vertex.glsl",
+                          "Shaders/specularShader/specular_shader_fragment.glsl");
     
 }
 
@@ -429,11 +570,59 @@ void renderScene()
 {
     renderGround(groundMesh, groundShader);
     //Render the car parts
-    renderCar(carBodyMesh, carBodyShader);
-    renderCar(carTiresMesh, carTiresShader);
-    renderCar(carWindowsMesh, carWindowsShader);
+    renderCar(carBodyMesh, carBodyShader, true);
+    renderCar(carTiresMesh, carTiresShader, false);
+    renderCar(carWindowsMesh, carWindowsShader, true);
+    //Render other meshes
+    renderMesh(armadilloMesh, armadilloShader, armadilloPosition, armadilloScale, armadilloColor);
+    renderMesh(teapotMesh, teapotShader, teapotPosition, teapotScale, teapotColor);
     //Rendering the skybox last.
     renderSkybox(skyboxMesh, skyboxShader);
+}
+
+
+void renderSceneWithoutCar()
+{
+    renderGround(groundMesh, groundShader);
+    //Render other meshes
+    renderMesh(armadilloMesh, armadilloShader, armadilloPosition, armadilloScale, armadilloColor);
+    renderMesh(teapotMesh, teapotShader, teapotPosition, teapotScale, teapotColor);
+    //Rendering the skybox last.
+    renderSkybox(skyboxMesh, skyboxShader);
+}
+
+void renderDynamicCubemap()
+{
+    //Set the viewport to the cubemap's size
+    glViewport(0, 0, dynamicCubemapSize, dynamicCubemapSize);
+    //Bind the framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, dynamicCubemapFBO);
+    //Set up the fov and aspect ratio
+    fov = 90.0f; //Not sure if this should be 90 or not
+    aspectRatio = 1.0f; //Rendering to a square quad
+    //Now, render to each face
+    for(int i = 0; i < 6; ++i)
+    {
+        //Attach the corresponding cubemap texture to the color attachment
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, dynamicCubemapTextureID, 0);
+        
+        //Clear the buffers
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        //Set up the view matrix
+        view = glm::lookAt(carPosition, carPosition + cameraGazes[i], cameraUps[i]);
+        //Render the scene except the car
+        renderSceneWithoutCar();
+    }
+   
+    //Reset the fov and aspect ratio
+    fov = 45.0f;
+    aspectRatio = (float)SCR_WIDTH / SCR_HEIGHT;
+    //Reset the viewport and framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+    glViewport(0, 0, width, height);
 }
 
 
@@ -452,6 +641,8 @@ int main()
 		updateDeltaTime();
 		// input
 		processCarMovement(window);
+        //Render the dynamic environment map (this is before updateCamera as view matrix changes during the process)
+        renderDynamicCubemap();
         //Set the camera
         updateCamera(window);
 
@@ -459,7 +650,6 @@ int main()
 		// ------
 		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
         renderScene();
         
 		// glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
