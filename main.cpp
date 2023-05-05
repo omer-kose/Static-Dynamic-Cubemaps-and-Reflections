@@ -31,7 +31,7 @@
 glm::vec3 cameraPosition; //Always fixed to car
 glm::mat4 view;
 float fov = 45.0f;
-float near = 0.1f;
+float near = 1.0f;
 float far = 1000.0f;
 //Camera camera(glm::vec3(0.0f, 0.0f, 2.0f));
 
@@ -517,7 +517,7 @@ void loadScene()
     groundShader = Shader("Shaders/groundShader/ground_shader_vertex.glsl",
                           "Shaders/groundShader/ground_shader_fragment.glsl");
     
-    groundTextureID = textureFromFile("hw2_support_files/ground_texture_sand.jpg", false);
+    groundTextureID = textureFromFile("hw2_support_files/black-gravel-texture.jpg", false);
     
     //The Skybox
     skyboxMesh = Mesh("hw2_support_files/obj/cube.obj");
